@@ -17,6 +17,7 @@ import java.util.Map;
 
 import org.eclipse.ecf.core.identity.ID;
 import org.eclipse.ecf.core.identity.IDCreateException;
+import org.eclipse.ecf.core.identity.IDFactory;
 import org.eclipse.ecf.internal.osgi.services.remoteserviceadmin.IDUtil;
 import org.eclipse.ecf.internal.osgi.services.remoteserviceadmin.PropertiesUtil;
 import org.osgi.framework.ServiceReference;
@@ -50,14 +51,17 @@ public class EndpointDescription extends
 	private String rsFilter;
 
 	private int hashCode = 7;
-	
+	private Map overrides;
+
 	private void computeHashCode() {
 		this.hashCode = 31 * this.hashCode + getId().hashCode();
-		this.hashCode = 31 * this.hashCode + new Long(getServiceId()).intValue();
+		this.hashCode = 31 * this.hashCode
+				+ new Long(getServiceId()).intValue();
 		String frameworkUUID = getFrameworkUUID();
-		this.hashCode = 31 * this.hashCode + (frameworkUUID==null?0:frameworkUUID.hashCode());
+		this.hashCode = 31 * this.hashCode
+				+ (frameworkUUID == null ? 0 : frameworkUUID.hashCode());
 	}
-	
+
 	/**
 	 * 
 	 * @param reference
@@ -126,11 +130,7 @@ public class EndpointDescription extends
 		try {
 			return IDUtil.createID(idNamespace, idName);
 		} catch (IDCreateException e) {
-			IllegalArgumentException iae = new IllegalArgumentException(
-					"cannot create a valid ID: idNamespace=" + idNamespace //$NON-NLS-1$
-							+ ", idName=" + idName); //$NON-NLS-1$
-			iae.initCause(e);
-			throw iae;
+			return IDFactory.getDefault().createStringID(idName);
 		}
 	}
 
@@ -206,7 +206,7 @@ public class EndpointDescription extends
 	public int hashCode() {
 		return hashCode;
 	}
-	
+
 	public boolean equals(Object other) {
 		if (other == null)
 			return false;
@@ -216,7 +216,7 @@ public class EndpointDescription extends
 			return false;
 		EndpointDescription o = (EndpointDescription) other;
 		String frameworkUUID = getFrameworkUUID();
-		// equals returns true:  1) if getId() returns same String
+		// equals returns true: 1) if getId() returns same String
 		return getId().equals(o.getId())
 		// 2) getServiceId() returns same value
 				&& getServiceId() == o.getServiceId()
@@ -232,4 +232,21 @@ public class EndpointDescription extends
 				+ ",properties=" + getProperties() + "]"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
+	void setPropertiesOverrides(Map propertiesOverrides) {
+		this.overrides = PropertiesUtil.mergeProperties(super.getProperties(),
+				propertiesOverrides);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see
+	 * org.osgi.service.remoteserviceadmin.EndpointDescription#getProperties()
+	 */
+	@Override
+	public Map<String, Object> getProperties() {
+		if (overrides != null)
+			return overrides;
+		return super.getProperties();
+	}
 }

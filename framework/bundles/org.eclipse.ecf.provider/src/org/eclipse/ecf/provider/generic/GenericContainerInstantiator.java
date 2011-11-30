@@ -10,6 +10,9 @@
  ******************************************************************************/
 package org.eclipse.ecf.provider.generic;
 
+import java.io.IOException;
+import java.net.BindException;
+import java.net.ServerSocket;
 import java.util.*;
 import org.eclipse.core.runtime.*;
 import org.eclipse.ecf.core.*;
@@ -32,6 +35,10 @@ public class GenericContainerInstantiator implements IContainerInstantiator, IRe
 	public static final String TCPSERVER_NAME = "ecf.generic.server"; //$NON-NLS-1$
 
 	private static final int CREATE_INSTANCE_ERROR_CODE = 4441;
+
+	private static final String ID_PROP = "id"; //$NON-NLS-1$
+
+	private static final String KEEPALIVE_PROP = "keepAlive"; //$NON-NLS-1$
 
 	public GenericContainerInstantiator() {
 		super();
@@ -95,7 +102,14 @@ public class GenericContainerInstantiator implements IContainerInstantiator, IRe
 		ID newID = null;
 		Integer ka = null;
 		if (args != null && args.length > 0) {
-			if (args.length > 1) {
+			if (args[0] instanceof Map) {
+				Map map = (Map) args[0];
+				Object idVal = map.get(ID_PROP);
+				if (idVal == null)
+					throw new IDCreateException("Cannot create ID.  No property with key=" + ID_PROP + " found in configuration=" + map); //$NON-NLS-1$ //$NON-NLS-2$
+				newID = getIDFromArg(idVal);
+				ka = getIntegerFromArg(map.get(KEEPALIVE_PROP));
+			} else if (args.length > 1) {
 				if (args[0] instanceof String || args[0] instanceof ID)
 					newID = getIDFromArg(args[0]);
 				if (args[1] instanceof String || args[1] instanceof Integer)
@@ -123,7 +137,14 @@ public class GenericContainerInstantiator implements IContainerInstantiator, IRe
 		ID newID = null;
 		Integer ka = null;
 		if (args != null && args.length > 0) {
-			if (args.length > 1) {
+			if (args[0] instanceof Map) {
+				Map map = (Map) args[0];
+				Object idVal = map.get(ID_PROP);
+				if (idVal == null)
+					throw new IDCreateException("Cannot create ID.  No property with key=" + ID_PROP + " found in configuration=" + map); //$NON-NLS-1$ //$NON-NLS-2$
+				newID = getIDFromArg(idVal);
+				ka = getIntegerFromArg(map.get(KEEPALIVE_PROP));
+			} else if (args.length > 1) {
 				if (args[0] instanceof String || args[0] instanceof ID)
 					newID = getIDFromArg(args[0]);
 				if (args[1] instanceof String || args[1] instanceof Integer)
@@ -131,31 +152,76 @@ public class GenericContainerInstantiator implements IContainerInstantiator, IRe
 			} else
 				newID = getIDFromArg(args[0]);
 		}
-		if (newID == null)
-			newID = IDFactory.getDefault().createStringID(TCPServerSOContainer.DEFAULT_PROTOCOL + "://" + TCPServerSOContainer.DEFAULT_HOST + ":" + TCPServerSOContainer.DEFAULT_PORT + TCPServerSOContainer.DEFAULT_NAME); //$NON-NLS-1$ //$NON-NLS-2$
+		if (newID == null) {
+			int port = -1;
+			if (TCPServerSOContainer.DEFAULT_FALLBACK_PORT) {
+				port = getFreePort();
+			} else if (portIsFree(TCPServerSOContainer.DEFAULT_PORT)) {
+				port = TCPServerSOContainer.DEFAULT_PORT;
+			}
+			if (port < 0)
+				throw new IDCreateException("No server port is available for generic server creation.  org.eclipse.ecf.provider.generic.port.fallback=" + TCPServerSOContainer.DEFAULT_FALLBACK_PORT + " and org.eclipse.ecf.provider.generic.port=" + TCPServerSOContainer.DEFAULT_PORT); //$NON-NLS-1$ //$NON-NLS-2$
+			newID = IDFactory.getDefault().createStringID(TCPServerSOContainer.DEFAULT_PROTOCOL + "://" + TCPServerSOContainer.DEFAULT_HOST + ":" + port + TCPServerSOContainer.DEFAULT_NAME);//$NON-NLS-1$ //$NON-NLS-2$
+		}
 		if (ka == null)
 			ka = new Integer(TCPServerSOContainer.DEFAULT_KEEPALIVE);
 		return new GenericContainerArgs(newID, ka);
+	}
+
+	private boolean portIsFree(int port) {
+		ServerSocket ss = null;
+		try {
+			ss = new ServerSocket(port);
+			ss.close();
+		} catch (BindException e) {
+			return false;
+		} catch (IOException e) {
+			return false;
+		} finally {
+			if (ss != null)
+				try {
+					ss.close();
+				} catch (IOException e) {
+					throw new IDCreateException(e);
+				}
+		}
+		return true;
+	}
+
+	/**
+	 * @return a free socket port
+	 */
+	private int getFreePort() {
+		int port = -1;
+		try {
+			ServerSocket ss = new ServerSocket(0);
+			port = ss.getLocalPort();
+			ss.close();
+		} catch (IOException e) {
+			return -1;
+		}
+		return port;
 	}
 
 	public IContainer createInstance(ContainerTypeDescription description, Object[] args) throws ContainerCreateException {
 		boolean isClient = isClient(description);
 		try {
 			GenericContainerArgs gcargs = null;
-			if (isClient)
-				gcargs = getClientArgs(args);
-			else
-				gcargs = getServerArgs(args);
-			// new ID must not be null
 			if (isClient) {
+				gcargs = getClientArgs(args);
 				return new TCPClientSOContainer(new SOContainerConfig(gcargs.getID()), gcargs.getKeepAlive().intValue());
 			}
-			return new TCPServerSOContainer(new SOContainerConfig(gcargs.getID()), gcargs.getKeepAlive().intValue());
+			// This synchronized block is to prevent issues with
+			// multithreaded access to ServerPort (to find available port)
+			synchronized (this) {
+				gcargs = getServerArgs(args);
+				return new TCPServerSOContainer(new SOContainerConfig(gcargs.getID()), gcargs.getKeepAlive().intValue());
+			}
 		} catch (Exception e) {
 			Trace.catching(ProviderPlugin.PLUGIN_ID, ECFProviderDebugOptions.EXCEPTIONS_CATCHING, this.getClass(), "createInstance", e); //$NON-NLS-1$
 			ProviderPlugin.getDefault().log(new Status(IStatus.ERROR, ProviderPlugin.PLUGIN_ID, CREATE_INSTANCE_ERROR_CODE, "createInstance", e)); //$NON-NLS-1$
 			Trace.throwing(ProviderPlugin.PLUGIN_ID, ECFProviderDebugOptions.EXCEPTIONS_THROWING, this.getClass(), "createInstance", e); //$NON-NLS-1$
-			throw new ContainerCreateException("createInstance", e); //$NON-NLS-1$
+			throw new ContainerCreateException("Create of containerType=" + description.getName() + " failed.", e); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 	}
 

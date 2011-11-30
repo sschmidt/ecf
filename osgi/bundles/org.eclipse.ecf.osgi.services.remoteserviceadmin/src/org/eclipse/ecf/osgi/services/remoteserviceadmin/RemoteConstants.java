@@ -18,8 +18,10 @@ import org.eclipse.ecf.remoteservice.IRemoteService;
 
 /**
  * ECF Remote Service Admin RemoteConstants. These are constants for ECF's RSA
- * implementation-specific meta-data.
- * 
+ * implementation-specific meta-data. For OSGi Remote constant see
+ * {@link org.osgi.service.remoteserviceadmin.RemoteConstants} and the <a
+ * href="http://www.osgi.org/download/r4v42/r4.enterprise.pdf">OSGI 4.2 Remote
+ * Service Admin specification (chap 122)</a>.
  */
 public class RemoteConstants {
 
@@ -116,8 +118,6 @@ public class RemoteConstants {
 	 */
 	public static final String ENDPOINT_REMOTESERVICE_FILTER = "ecf.endpoint.rsfilter"; //$NON-NLS-1$
 
-	public static final String ENDPOINT_SERVICE_IMPORTED_CONFIGS_VALUE = "org.eclipse.ecf.config"; //$NON-NLS-1$
-
 	/**
 	 * Container factory arguments for exported remote service hosts. If
 	 * specified as a service property upon remote service registration, this
@@ -162,4 +162,25 @@ public class RemoteConstants {
 	 * the SERVICE_IMPORTED value appropriately.
 	 */
 	public static final String SERVICE_IMPORTED_VALUETYPE = "ecf.service.imported.valuetype"; //$NON-NLS-1$
+	/**
+	 * This property is set on the remote service proxy during
+	 * {@link org.osgi.service.remoteserviceadmin.RemoteServiceAdmin#importService(org.osgi.service.remoteserviceadmin.EndpointDescription)}
+	 * , before local service proxy registration. It's String value is set to
+	 * the value returned from
+	 * {@link org.osgi.service.remoteserviceadmin.EndpointDescription#getId()}.
+	 * It allows those accessing the remote service proxy to get information
+	 * about the endpoint id.
+	 */
+	public static final String SERVICE_IMPORTED_ENDPOINT_ID = "ecf.service.imported.endpoint.id"; //$NON-NLS-1$
+
+	/**
+	 * This property is set on the remote service proxy during
+	 * {@link org.osgi.service.remoteserviceadmin.RemoteServiceAdmin#importService(org.osgi.service.remoteserviceadmin.EndpointDescription)}
+	 * , before local service proxy registration. It's Long value is set to the
+	 * value returned from
+	 * {@link org.osgi.service.remoteserviceadmin.EndpointDescription#getServiceId()}
+	 * . It allows those accessing the remote service proxy to get information
+	 * about the endpoint remote service id.
+	 */
+	public static final String SERVICE_IMPORTED_ENDPOINT_SERVICE_ID = "ecf.service.imported.endpoint.service.id"; //$NON-NLS-1$
 }

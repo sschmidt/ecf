@@ -13,7 +13,19 @@ import java.util.Arrays;
 import java.util.Collection;
 
 import org.eclipse.ecf.core.identity.ID;
+import org.eclipse.ecf.remoteservice.IRemoteServiceContainerAdapter;
 
+/**
+ * Exception class for the case when no remote reference is found during
+ * {@link RemoteServiceAdmin#importService(org.osgi.service.remoteserviceadmin.EndpointDescription)}
+ * . Instances of this class will be thrown when the call to
+ * {@link IRemoteServiceContainerAdapter#getRemoteServiceReferences(ID, ID[], String, String)}
+ * made in
+ * {@link RemoteServiceAdmin#importService(org.osgi.service.remoteserviceadmin.EndpointDescription)}
+ * fail to find any available remote references (e.g. due to connection problem
+ * or remote reference lookup problem).
+ * 
+ */
 public class RemoteReferenceNotFoundException extends Exception {
 
 	private static final long serialVersionUID = -4174685192086828376L;
@@ -48,9 +60,9 @@ public class RemoteReferenceNotFoundException extends Exception {
 	}
 
 	public String toString() {
-		return "RemoteReferenceNotFoundException[targetID=" + targetID
-				+ ", idFilter=" + Arrays.toString(idFilter) + ", interfaces="
-				+ interfaces + ", rsFilter=" + rsFilter + "]";
+		return "RemoteReferenceNotFoundException[targetID=" + targetID //$NON-NLS-1$
+				+ ", idFilter=" + Arrays.toString(idFilter) + ", interfaces=" //$NON-NLS-1$ //$NON-NLS-2$
+				+ interfaces + ", rsFilter=" + rsFilter + "]"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 }

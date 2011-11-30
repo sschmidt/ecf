@@ -57,6 +57,11 @@ import org.osgi.util.tracker.BundleTrackerCustomizer;
 import org.osgi.util.tracker.ServiceTracker;
 import org.osgi.util.tracker.ServiceTrackerCustomizer;
 
+/**
+ * Implementation of EndpointDescription discovery mechanism, using any/all ECF
+ * discovery providers (implementers if {@link IDiscoveryLocator}.
+ * 
+ */
 public class EndpointDescriptionLocator {
 
 	private BundleContext context;
@@ -384,7 +389,7 @@ public class EndpointDescriptionLocator {
 			String matchingFilters, boolean discovered) {
 		if (eventQueue == null)
 			return;
-		trace("queueEndpointDescription", "endpointDescription="
+		trace("queueEndpointDescription", "endpointDescription=" //$NON-NLS-1$ //$NON-NLS-2$
 				+ endpointDescription);
 		synchronized (eventQueue) {
 			eventQueue
@@ -596,19 +601,27 @@ public class EndpointDescriptionLocator {
 			List<String> filters = PropertiesUtil.getStringPlusProperty(
 					getMapFromProperties(refs[i]),
 					EndpointListener.ENDPOINT_LISTENER_SCOPE);
-			String matchingFilter = isMatch(description, filters);
-			if (matchingFilter != null)
-				results.add(new EndpointListenerHolder(listener, description,
-						matchingFilter));
+			if (filters.size() > 0) {
+				String matchingFilter = isMatch(description, filters);
+				if (matchingFilter != null)
+					results.add(new EndpointListenerHolder(listener,
+							description, matchingFilter));
+			}
 		}
 		return (EndpointListenerHolder[]) results
 				.toArray(new EndpointListenerHolder[results.size()]);
 	}
 
 	private String isMatch(EndpointDescription description, List<String> filters) {
-		for (String filter : filters)
-			if (description.matches(filter))
-				return filter;
+		for (String filter : filters) {
+			try {
+				if (description.matches(filter))
+					return filter;
+			} catch (IllegalArgumentException e) {
+				logError("isMatch", "invalid endpoint listener filter=" //$NON-NLS-1$ //$NON-NLS-2$
+						+ filters, e);
+			}
+		}
 		return null;
 	}
 
@@ -812,6 +825,8 @@ public class EndpointDescriptionLocator {
 		}
 
 		void handleService(IServiceInfo serviceInfo, boolean discovered) {
+			logInfo("handleService", "serviceInfo=" + serviceInfo //$NON-NLS-1$ //$NON-NLS-2$
+					+ ",discovered=" + discovered); //$NON-NLS-1$
 			IServiceID serviceID = serviceInfo.getServiceID();
 			if (matchServiceID(serviceID))
 				handleOSGiServiceEndpoint(serviceID, serviceInfo, discovered);
@@ -855,6 +870,12 @@ public class EndpointDescriptionLocator {
 			}
 		}
 
+		private void logInfo(String methodName, String message) {
+			LogUtility.logInfo(methodName,
+					DebugOptions.ENDPOINT_DESCRIPTION_LOCATOR, this.getClass(),
+					message);
+		}
+
 		private void logWarning(String methodName, String message) {
 			LogUtility.logWarning(methodName,
 					DebugOptions.ENDPOINT_DESCRIPTION_LOCATOR, this.getClass(),
@@ -891,8 +912,9 @@ public class EndpointDescriptionLocator {
 				// for given serviceID and serviceInfo
 				return (discovered) ? factory
 						.createDiscoveredEndpointDescription(locator,
-								serviceInfo) : factory
-						.removeDiscoveredEndpointDescription(locator, serviceId);
+								serviceInfo)
+						: factory.removeDiscoveredEndpointDescription(locator,
+								serviceId);
 			} catch (Exception e) {
 				logError(
 						methodName,

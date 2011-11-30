@@ -10,7 +10,6 @@
 package org.eclipse.ecf.remoteservice.client;
 
 import java.io.NotSerializableException;
-import java.lang.reflect.Method;
 import java.util.*;
 import org.eclipse.core.runtime.*;
 import org.eclipse.ecf.core.AbstractContainer;
@@ -125,7 +124,9 @@ public abstract class AbstractClientContainer extends AbstractContainer implemen
 	}
 
 	public void addRemoteServiceListener(IRemoteServiceListener listener) {
-		remoteServiceListeners.add(listener);
+		synchronized (remoteServiceListeners) {
+			remoteServiceListeners.add(listener);
+		}
 	}
 
 	public IFuture asyncGetRemoteServiceReferences(final ID[] idFilter, final String clazz, final String filter) {
@@ -206,16 +207,13 @@ public abstract class AbstractClientContainer extends AbstractContainer implemen
 	}
 
 	public IRemoteServiceRegistration registerRemoteService(final String[] clazzes, Object service, Dictionary properties) {
-		if (service instanceof List) {
-			return registerRemoteCallables(clazzes, (List) service, properties);
-		} else if (service instanceof IRemoteCallable[][]) {
-			return registerCallables(clazzes, (IRemoteCallable[][]) service, properties);
-		}
 		throw new RuntimeException("registerRemoteService cannot be used with client container"); //$NON-NLS-1$
 	}
 
 	public void removeRemoteServiceListener(IRemoteServiceListener listener) {
-		remoteServiceListeners.remove(listener);
+		synchronized (remoteServiceListeners) {
+			remoteServiceListeners.remove(listener);
+		}
 	}
 
 	public boolean ungetRemoteService(final IRemoteServiceReference reference) {
@@ -246,6 +244,7 @@ public abstract class AbstractClientContainer extends AbstractContainer implemen
 	public IRemoteServiceRegistration registerCallables(IRemoteCallable[] callables, Dictionary properties) {
 		Assert.isNotNull(callables);
 		final RemoteServiceClientRegistration registration = createRestServiceRegistration(callables, properties);
+		this.registry.registerRegistration(registration);
 		// notify
 		fireRemoteServiceEvent(new IRemoteServiceRegisteredEvent() {
 
@@ -265,12 +264,12 @@ public abstract class AbstractClientContainer extends AbstractContainer implemen
 				return registration.getClazzes();
 			}
 		});
-		this.registry.registerRegistration(registration);
 		return registration;
 	}
 
 	public IRemoteServiceRegistration registerCallables(String[] clazzes, IRemoteCallable[][] callables, Dictionary properties) {
 		final RemoteServiceClientRegistration registration = createRestServiceRegistration(clazzes, callables, properties);
+		this.registry.registerRegistration(registration);
 		// notify
 		fireRemoteServiceEvent(new IRemoteServiceRegisteredEvent() {
 
@@ -290,100 +289,7 @@ public abstract class AbstractClientContainer extends AbstractContainer implemen
 				return registration.getClazzes();
 			}
 		});
-		this.registry.registerRegistration(registration);
 		return registration;
-	}
-
-	public IRemoteServiceRegistration registerRemoteCallables(Class[] clazzes, List callablesList, Dictionary properties) {
-		Assert.isNotNull(clazzes);
-		IRemoteCallable[][] callables = createCallablesFromClasses(clazzes, callablesList);
-		Assert.isNotNull(callables);
-		Assert.isTrue(callables.length > 0);
-		final String[] classNames = new String[clazzes.length];
-		for (int i = 0; i < clazzes.length; i++) {
-			classNames[i] = clazzes[i].getName();
-		}
-		return registerCallables(classNames, callables, properties);
-	}
-
-	public IRemoteServiceRegistration registerRemoteCallables(String[] clazzes, List callables, Dictionary properties) {
-		Assert.isNotNull(clazzes);
-		Assert.isNotNull(callables);
-		return registerRemoteCallables(getClazzesFromStrings(clazzes), callables, properties);
-	}
-
-	public IRemoteCallable[][] createCallablesFromClasses(Class[] cls, List callables) {
-		Assert.isNotNull(cls);
-		Assert.isTrue(cls.length > 0);
-		// First create result list to hold IRestCallable[]...for each Class
-		List results = new ArrayList();
-		for (int i = 0; i < cls.length; i++) {
-			Method[] methods = getMethodsForClass(cls[i]);
-			IRemoteCallable[] methodCallables = getCallablesForMethods(methods, callables);
-			if (methodCallables != null && methodCallables.length > 0)
-				results.add(methodCallables);
-		}
-		return (IRemoteCallable[][]) results.toArray(new IRemoteCallable[][] {});
-	}
-
-	protected IRemoteCallable[] getCallablesForMethods(Method[] methods, List callables) {
-		Assert.isNotNull(methods);
-		Assert.isTrue(methods.length > 0);
-		List results = new ArrayList();
-		for (int i = 0; i < methods.length; i++) {
-			IRemoteCallable callable = findCallableForName(methods[i].getName(), callables);
-			if (callable != null)
-				results.add(callable);
-		}
-		return (IRemoteCallable[]) results.toArray(new IRemoteCallable[] {});
-	}
-
-	protected IRemoteCallable findCallableForName(String fqMethodName, List callables) {
-		if (callables == null || callables.isEmpty())
-			return null;
-		for (Iterator i = callables.iterator(); i.hasNext();) {
-			IRemoteCallable callable = (IRemoteCallable) i.next();
-			if (callable != null && fqMethodName.equals(callable.getMethod()))
-				return callable;
-		}
-		return null;
-	}
-
-	private Method[] getMethodsForClass(Class class1) {
-		Method[] results = null;
-		try {
-			results = class1.getDeclaredMethods();
-		} catch (Exception e) {
-			logException("Could not get declared methods for class=" + class1.getName(), e); //$NON-NLS-1$
-			return null;
-		}
-		return results;
-	}
-
-	public Class[] getClazzesFromStrings(String[] clazzes) throws IllegalArgumentException {
-		List results = new ArrayList();
-		for (int i = 0; i < clazzes.length; i++) {
-			Class clazz = getClazzFromString(clazzes[i]);
-			if (clazz != null)
-				results.add(clazz);
-		}
-		return (Class[]) results.toArray(new Class[] {});
-	}
-
-	public Class getClazzFromString(String className) throws IllegalArgumentException {
-		Class result = null;
-		try {
-			result = Class.forName(className, true, this.getClass().getClassLoader());
-		} catch (Exception e) {
-			String errorMsg = "ClassNotFoundException for class with name=" + className; //$NON-NLS-1$
-			logException(errorMsg, e);
-			throw new IllegalArgumentException(errorMsg);
-		} catch (NoClassDefFoundError e) {
-			String errorMsg = "NoClassDefFoundError for class with name=" + className; //$NON-NLS-1$
-			logException(errorMsg, e);
-			throw new IllegalArgumentException(errorMsg);
-		}
-		return result;
 	}
 
 	// IContainer implementation methods
@@ -429,7 +335,9 @@ public abstract class AbstractClientContainer extends AbstractContainer implemen
 
 	public void dispose() {
 		disconnect();
-		remoteServiceListeners.clear();
+		synchronized (remoteServiceListeners) {
+			remoteServiceListeners.clear();
+		}
 		super.dispose();
 	}
 

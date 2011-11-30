@@ -10,6 +10,10 @@
 package org.eclipse.ecf.internal.osgi.services.remoteserviceadmin;
 
 import java.util.Dictionary;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -30,6 +34,7 @@ import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceFactory;
 import org.osgi.framework.ServiceReference;
 import org.osgi.framework.ServiceRegistration;
+import org.osgi.framework.Version;
 import org.osgi.service.log.LogService;
 import org.osgi.util.tracker.ServiceTracker;
 
@@ -40,7 +45,7 @@ public class Activator implements BundleActivator {
 	private static BundleContext context;
 	private static Activator instance;
 
-	static BundleContext getContext() {
+	public static BundleContext getContext() {
 		return context;
 	}
 
@@ -63,6 +68,45 @@ public class Activator implements BundleActivator {
 	private Object saxParserFactoryTrackerLock = new Object();
 	private ServiceTracker saxParserFactoryTracker;
 
+	private static final String RSA_PROXY_BUNDLE_SYMBOLIC_ID = "org.eclipse.ecf.osgi.services.remoteserviceadmin.proxy"; //$NON-NLS-1$
+
+	private BundleContext proxyServiceFactoryBundleContext;
+
+	private void initializeProxyServiceFactoryBundle() throws Exception {
+		// First, find proxy bundle
+		for (Bundle b : context.getBundles()) {
+			if (RSA_PROXY_BUNDLE_SYMBOLIC_ID.equals(b.getSymbolicName())) {
+				// first start it
+				b.start();
+				// then get its bundle context
+				proxyServiceFactoryBundleContext = b.getBundleContext();
+			}
+		}
+		if (proxyServiceFactoryBundleContext == null)
+			throw new IllegalStateException("RSA Proxy bundle (symbolic id=='" //$NON-NLS-1$
+					+ RSA_PROXY_BUNDLE_SYMBOLIC_ID
+					+ "') cannot be found, so RSA cannot be started"); //$NON-NLS-1$
+	}
+
+	private void stopProxyServiceFactoryBundle() {
+		if (proxyServiceFactoryBundleContext != null) {
+			// stop it
+			try {
+				proxyServiceFactoryBundleContext.getBundle().stop();
+			} catch (Exception e) {
+				// we don't care
+			}
+			proxyServiceFactoryBundleContext = null;
+		}
+	}
+
+	public BundleContext getProxyServiceFactoryBundleContext() {
+		return proxyServiceFactoryBundleContext;
+	}
+
+	private Map<Bundle, RemoteServiceAdmin> remoteServiceAdmins = new HashMap<Bundle, RemoteServiceAdmin>(
+			1);
+
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -73,6 +117,14 @@ public class Activator implements BundleActivator {
 	public void start(BundleContext bundleContext) throws Exception {
 		Activator.context = bundleContext;
 		Activator.instance = this;
+		// initialize the RSA proxy service factory bundle...so that we
+		// can get/use *that bundle's BundleContext for registering the
+		// proxy ServiceFactory.
+		// See osgi-dev thread here for info about this
+		// approach/using the ServiceFactory extender approach for this purpose:
+		// https://mail.osgi.org/pipermail/osgi-dev/2011-February/003000.html
+		initializeProxyServiceFactoryBundle();
+
 		// make remote service admin available
 		Properties rsaProps = new Properties();
 		rsaProps.put(RemoteServiceAdmin.SERVICE_PROP, new Boolean(true));
@@ -81,13 +133,27 @@ public class Activator implements BundleActivator {
 						.getName(), new ServiceFactory() {
 					public Object getService(Bundle bundle,
 							ServiceRegistration registration) {
-						return new RemoteServiceAdmin(bundle);
+						RemoteServiceAdmin result = null;
+						synchronized (remoteServiceAdmins) {
+							RemoteServiceAdmin rsa = remoteServiceAdmins
+									.get(bundle);
+							if (rsa == null) {
+								rsa = new RemoteServiceAdmin(bundle);
+								remoteServiceAdmins.put(bundle, rsa);
+							}
+							result = rsa;
+						}
+						return result;
 					}
 
 					public void ungetService(Bundle bundle,
 							ServiceRegistration registration, Object service) {
-						if (service != null)
-							((RemoteServiceAdmin) service).close();
+						synchronized (remoteServiceAdmins) {
+							RemoteServiceAdmin rsa = remoteServiceAdmins
+									.remove(bundle);
+							if (rsa != null)
+								rsa.close();
+						}
 					}
 				}, (Dictionary) rsaProps);
 
@@ -108,6 +174,18 @@ public class Activator implements BundleActivator {
 		endpointDescriptionLocator.start();
 	}
 
+	private void clearRSAs() {
+		synchronized (remoteServiceAdmins) {
+			for (Iterator<Entry<Bundle, RemoteServiceAdmin>> i = remoteServiceAdmins
+					.entrySet().iterator(); i.hasNext();) {
+				Entry<Bundle, RemoteServiceAdmin> entry = i.next();
+				RemoteServiceAdmin rsa = entry.getValue();
+				rsa.close();
+				i.remove();
+			}
+		}
+	}
+
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -123,6 +201,7 @@ public class Activator implements BundleActivator {
 			remoteServiceAdminRegistration.unregister();
 			remoteServiceAdminRegistration = null;
 		}
+		clearRSAs();
 		if (endpointDescriptionAdvertiserRegistration != null) {
 			endpointDescriptionAdvertiserRegistration.unregister();
 			endpointDescriptionAdvertiserRegistration = null;
@@ -148,8 +227,24 @@ public class Activator implements BundleActivator {
 			containerManagerTracker.close();
 			containerManagerTracker = null;
 		}
+		stopProxyServiceFactoryBundle();
 		Activator.context = null;
 		Activator.instance = null;
+	}
+
+	public boolean isOldEquinox() {
+		if (context == null)
+			return false;
+		Bundle systemBundle = context.getBundle(0);
+		String systemBSN = systemBundle.getSymbolicName();
+		if ("org.eclipse.osgi".equals(systemBSN)) { //$NON-NLS-1$
+			Version fixedVersion = new Version("3.7.0"); //$NON-NLS-1$
+			// running on equinox; check the version
+			Version systemVersion = systemBundle.getVersion();
+			if (systemVersion.compareTo(fixedVersion) < 0)
+				return true;
+		}
+		return false;
 	}
 
 	public String getFrameworkUUID() {

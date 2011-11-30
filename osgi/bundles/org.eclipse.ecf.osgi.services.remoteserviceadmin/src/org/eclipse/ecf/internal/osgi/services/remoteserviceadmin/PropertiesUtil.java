@@ -20,10 +20,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
 
 import org.eclipse.ecf.osgi.services.remoteserviceadmin.RemoteConstants;
 import org.eclipse.ecf.remoteservice.IRemoteServiceReference;
 import org.eclipse.ecf.remoteservice.IRemoteServiceRegistration;
+import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceReference;
 
 public class PropertiesUtil {
@@ -59,7 +62,6 @@ public class PropertiesUtil {
 			RemoteConstants.ENDPOINT_CONTAINER_ID_NAMESPACE,
 			RemoteConstants.ENDPOINT_IDFILTER_IDS,
 			RemoteConstants.ENDPOINT_REMOTESERVICE_FILTER,
-			RemoteConstants.ENDPOINT_SERVICE_IMPORTED_CONFIGS_VALUE,
 			RemoteConstants.SERVICE_EXPORTED_CONTAINER_CONNECT_CONTEXT,
 			RemoteConstants.SERVICE_EXPORTED_CONTAINER_FACTORY_ARGS,
 			RemoteConstants.SERVICE_EXPORTED_CONTAINER_ID,
@@ -106,31 +108,43 @@ public class PropertiesUtil {
 	}
 
 	public static String[] getExportedInterfaces(
-			ServiceReference serviceReference) {
-		// Get the OSGi 4.2 specified required service property value
-		Object propValue = serviceReference
-				.getProperty(org.osgi.service.remoteserviceadmin.RemoteConstants.SERVICE_EXPORTED_INTERFACES);
-		// If the required property is not set then it's not being registered
-		// as a remote service so we return null
+			ServiceReference serviceReference,
+			Map<String, Object> overridingProperties) {
+		Object overridingPropValue = overridingProperties
+				.get(org.osgi.service.remoteserviceadmin.RemoteConstants.SERVICE_EXPORTED_INTERFACES);
+		if (overridingPropValue != null)
+			return getExportedInterfaces(serviceReference, overridingPropValue);
+		return getExportedInterfaces(serviceReference);
+	}
+
+	private static String[] getExportedInterfaces(
+			ServiceReference serviceReference, Object propValue) {
 		if (propValue == null)
 			return null;
+		String[] objectClass = (String[]) serviceReference
+				.getProperty(org.osgi.framework.Constants.OBJECTCLASS);
 		boolean wildcard = propValue.equals("*"); //$NON-NLS-1$
 		if (wildcard)
-			return (String[]) serviceReference
-					.getProperty(org.osgi.framework.Constants.OBJECTCLASS);
+			return objectClass;
 		else {
-			final String[] stringValue = getStringArrayFromPropertyValue(propValue);
-			if (stringValue != null && stringValue.length == 1
-					&& stringValue[0].equals("*")) { //$NON-NLS-1$
-				LogUtility
-						.logWarning(
-								"getExportedInterfaces", //$NON-NLS-1$
-								DebugOptions.TOPOLOGY_MANAGER,
-								PropertiesUtil.class,
-								"Service Exported Interfaces Wildcard does not accept String[\"*\"]"); //$NON-NLS-1$
-			}
-			return stringValue;
+			final String[] stringArrayValue = getStringArrayFromPropertyValue(propValue);
+			if (stringArrayValue == null)
+				return null;
+			else if (stringArrayValue.length == 1
+					&& stringArrayValue[0].equals("*")) { //$NON-NLS-1$
+				// this will support the idiom: new String[] { "*" }
+				return objectClass;
+			} else
+				return stringArrayValue;
 		}
+	}
+
+	public static String[] getExportedInterfaces(
+			ServiceReference serviceReference) {
+		return getExportedInterfaces(
+				serviceReference,
+				serviceReference
+						.getProperty(org.osgi.service.remoteserviceadmin.RemoteConstants.SERVICE_EXPORTED_INTERFACES));
 	}
 
 	public static String[] getServiceIntents(ServiceReference serviceReference,
@@ -229,8 +243,14 @@ public class PropertiesUtil {
 		return ecfProperties.contains(key);
 	}
 
+	// skip dotted (private) properties (R4.2 enterprise spec. table 122.1)
+	public static boolean isPrivateProperty(String key) {
+		return (key.startsWith(".")); //$NON-NLS-1$
+	}
+
 	public static boolean isReservedProperty(String key) {
-		return isOSGiProperty(key) || isECFProperty(key);
+		return isOSGiProperty(key) || isECFProperty(key)
+				|| isPrivateProperty(key);
 	}
 
 	public static Map createMapFromDictionary(Dictionary input) {
@@ -303,6 +323,16 @@ public class PropertiesUtil {
 		return target;
 	}
 
+	public static Map<String, Object> copyProperties(
+			final ServiceReference serviceReference,
+			final Map<String, Object> target) {
+		final String[] keys = serviceReference.getPropertyKeys();
+		for (int i = 0; i < keys.length; i++) {
+			target.put(keys[i], serviceReference.getProperty(keys[i]));
+		}
+		return target;
+	}
+
 	public static Map<String, Object> copyNonECFProperties(
 			Map<String, Object> source, Map<String, Object> target) {
 		for (String key : source.keySet())
@@ -346,4 +376,31 @@ public class PropertiesUtil {
 		return target;
 	}
 
+	public static Map mergeProperties(final ServiceReference serviceReference,
+			final Map<String, Object> overrides) {
+		return mergeProperties(copyProperties(serviceReference, new HashMap()),
+				overrides);
+	}
+
+	public static Map mergeProperties(final Map<String, Object> source,
+			final Map<String, Object> overrides) {
+
+		// copy to target from service reference
+		final Map target = copyProperties(source, new TreeMap<String, Object>(
+				String.CASE_INSENSITIVE_ORDER));
+
+		// now do actual merge
+		final Set<String> keySet = overrides.keySet();
+		for (final String key : keySet) {
+			// skip keys not allowed
+			if (Constants.SERVICE_ID.equals(key)
+					|| Constants.OBJECTCLASS.equals(key)) {
+				continue;
+			}
+			target.remove(key.toLowerCase());
+			target.put(key.toLowerCase(), overrides.get(key));
+		}
+
+		return target;
+	}
 }
