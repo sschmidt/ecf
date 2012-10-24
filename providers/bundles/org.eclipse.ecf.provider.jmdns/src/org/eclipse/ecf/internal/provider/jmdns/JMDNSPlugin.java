@@ -79,7 +79,7 @@ public class JMDNSPlugin implements BundleActivator {
 		props.put(IDiscoveryService.CONTAINER_NAME, NAME);
 		props.put(Constants.SERVICE_RANKING, new Integer(750));
 		String[] clazzes = new String[] {IDiscoveryService.class.getName(), IDiscoveryLocator.class.getName(), IDiscoveryAdvertiser.class.getName()};
-		serviceRegistration = context.registerService(clazzes, serviceFactory, props);
+		serviceRegistration = context.registerService(clazzes, serviceFactory, (Dictionary) props);
 	}
 
 	private final DiscoveryServiceFactory serviceFactory = new DiscoveryServiceFactory();
