@@ -2,8 +2,8 @@
 <feature
       id="org.eclipse.ecf.tests.feature"
       label="Used to build and execute tests (should never appear in a product)"
-      version="3.0.0"
-      provider-name="Eclipse.org">
+      version="3.0.0.qualifier"
+      provider-name="%providerName">
 
    <description url="http://www.eclipse.org/ecf">
       Eclipse Communications Framework Tests
@@ -332,7 +332,6 @@ limitations under the License.
       <import plugin="org.eclipse.ecf.osgi.services.distribution" version="1.0.0" match="greaterOrEqual"/>
       <import plugin="org.eclipse.ecf.remoteservice" version="3.0.0" match="greaterOrEqual"/>
       <import plugin="org.eclipse.ecf" version="3.0.0" match="greaterOrEqual"/>
-      <import plugin="org.eclipse.ecf.osgi.services.discovery" version="1.0.0" match="greaterOrEqual"/>
       <import plugin="org.eclipse.equinox.common" version="3.5.1" match="greaterOrEqual"/>
       <import plugin="org.eclipse.equinox.concurrent" version="1.0.0" match="greaterOrEqual"/>
       <import plugin="org.eclipse.ecf.provider.discovery"/>
@@ -407,13 +406,6 @@ limitations under the License.
 
    <plugin
          id="org.eclipse.ecf.tests.sync"
-         download-size="0"
-         install-size="0"
-         version="0.0.0"
-         unpack="false"/>
-
-   <plugin
-         id="org.eclipse.ecf.tests.osgi.services.discovery"
          download-size="0"
          install-size="0"
          version="0.0.0"

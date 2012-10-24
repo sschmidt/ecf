@@ -400,12 +400,18 @@ public class Trace {
 
 		if (shouldTrace(pluginId, option)) {
 			StringBuffer buf = new StringBuffer(PREFIX_CATCHING);
-			buf.append(throwable.getMessage()).append(SEPARATOR_SPACE);
+			if (throwable != null) {
+				String message = throwable.getMessage();
+				if (message != null)
+					buf.append(message).append(SEPARATOR_SPACE);
+			}
 			buf.append(PARENTHESIS_OPEN).append(clazz.getName())
 					.append(SEPARATOR_METHOD);
 			buf.append(methodName).append(PARENTHESIS_CLOSE);
 			trace(buf.toString());
-			throwable.printStackTrace(System.err);
+			if(throwable != null) {
+			    throwable.printStackTrace(System.err);
+			}
 		}
 	}
 
@@ -431,7 +437,11 @@ public class Trace {
 
 		if (shouldTrace(pluginId, option)) {
 			StringBuffer buf = new StringBuffer(PREFIX_THROWING);
-			buf.append(throwable.getMessage()).append(SEPARATOR_SPACE);
+			if (throwable != null) {
+				String message = throwable.getMessage();
+				if (message != null)
+					buf.append(message).append(SEPARATOR_SPACE);
+			}
 			buf.append(PARENTHESIS_OPEN).append(clazz.getName())
 					.append(SEPARATOR_METHOD);
 			buf.append(methodName).append(PARENTHESIS_CLOSE);

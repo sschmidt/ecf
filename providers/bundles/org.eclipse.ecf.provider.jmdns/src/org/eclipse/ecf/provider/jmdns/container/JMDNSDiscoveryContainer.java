@@ -156,12 +156,16 @@ public class JMDNSDiscoveryContainer extends AbstractDiscoveryContainerAdapter i
 			notificationThread = null;
 			this.targetID = null;
 			serviceTypes.clear();
-			try {
-				jmdns.close();
-			} catch (IOException e) {
-				Trace.catching(JMDNSPlugin.PLUGIN_ID, JMDNSDebugOptions.EXCEPTIONS_CATCHING, this.getClass(), "disconnect", e); //$NON-NLS-1$
+
+			// @see https://bugs.eclipse.org/bugs/show_bug.cgi?id=385395
+			if (jmdns != null) {
+				try {
+				    jmdns.close();
+				} catch (IOException e) {
+				    Trace.catching(JMDNSPlugin.PLUGIN_ID, JMDNSDebugOptions.EXCEPTIONS_CATCHING, this.getClass(), "disconnect", e); //$NON-NLS-1$
+				}
+				jmdns = null;
 			}
-			jmdns = null;
 			fireContainerEvent(new ContainerDisconnectedEvent(this.getID(), connectedID));
 		}
 	}

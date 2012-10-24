@@ -2,7 +2,7 @@
 <feature
       id="org.eclipse.ecf.sdk"
       label="ECF Target Components Feature"
-      version="3.4.0.qualifier"
+      version="3.5.7.qualifier"
       provider-name="Eclipse.org">
 
    <description url="http://www.eclipse.org/ecf">
@@ -312,7 +312,19 @@ limitations under the License.
          version="0.0.0"/>
 
    <includes
-         id="org.eclipse.ecf.core.featurepatch"
+         id="org.eclipse.ecf.remoteservice.sdk.feature"
+         version="0.0.0"/>
+
+   <includes
+         id="org.eclipse.ecf.filetransfer.httpclient.feature"
+         version="0.0.0"/>
+
+   <includes
+         id="org.eclipse.ecf.filetransfer.feature"
+         version="0.0.0"/>
+
+   <includes
+         id="org.eclipse.ecf.filetransfer.httpclient4.feature"
          version="0.0.0"/>
 
 </feature>

@@ -2,11 +2,11 @@
 <feature
       id="org.eclipse.ecf.remoteservice.sdk.feature"
       label="ECF Remote Services Target Components"
-      version="3.4.0.qualifier"
+      version="3.5.7.qualifier"
       provider-name="%providerName">
 
    <description url="http://www.eclipse.org/ecf">
-      This feature provides the ECF Remote Services Target Components
+      This feature provides the ECF Remote Services Target Components.  This is the set of bundles (API, examples, and providers), that allow OSGi frameworks to expose and access remote services.
    </description>
 
    <copyright>
@@ -66,10 +66,6 @@
          version="0.0.0"/>
 
    <includes
-         id="org.eclipse.ecf.discovery.local.feature"
-         version="0.0.0"/>
-
-   <includes
          id="org.eclipse.ecf.discovery.slp.feature"
          version="0.0.0"/>
 
@@ -87,6 +83,10 @@
 
    <includes
          id="org.eclipse.ecf.discovery.feature"
+         version="0.0.0"/>
+
+   <includes
+         id="org.eclipse.ecf.xmpp.feature"
          version="0.0.0"/>
 
 </feature>

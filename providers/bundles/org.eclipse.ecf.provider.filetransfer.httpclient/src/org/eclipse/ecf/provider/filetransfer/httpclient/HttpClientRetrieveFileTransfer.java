@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2004, 2010 Composent, Inc., IBM All rights reserved. This
+ * Copyright (c) 2004, 2011 Composent, Inc., IBM All rights reserved. This
  * program and the accompanying materials are made available under the terms of
  * the Eclipse Public License v1.0 which accompanies this distribution, and is
  * available at http://www.eclipse.org/legal/epl-v10.html
@@ -9,9 +9,11 @@
  *  Maarten Meijer - bug 237936, added gzip encoded transfer default
  *  Henrich Kraemer - bug 263869, testHttpsReceiveFile fails using HTTP proxy
  *  Henrich Kraemer - bug 263613, [transport] Update site contacting / downloading is not cancelable
+ *  Henrich Kraemer - Bug 297742 - [transport] Investigate how to maintain HTTP session  
  ******************************************************************************/
 package org.eclipse.ecf.provider.filetransfer.httpclient;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -69,6 +71,7 @@ import org.eclipse.ecf.filetransfer.events.socket.ISocketListener;
 import org.eclipse.ecf.filetransfer.identity.IFileID;
 import org.eclipse.ecf.internal.provider.filetransfer.httpclient.Activator;
 import org.eclipse.ecf.internal.provider.filetransfer.httpclient.ConnectingSocketMonitor;
+import org.eclipse.ecf.internal.provider.filetransfer.httpclient.ConnectionManagerHelper;
 import org.eclipse.ecf.internal.provider.filetransfer.httpclient.DebugOptions;
 import org.eclipse.ecf.internal.provider.filetransfer.httpclient.ECFHttpClientProtocolSocketFactory;
 import org.eclipse.ecf.internal.provider.filetransfer.httpclient.ECFHttpClientSecureProtocolSocketFactory;
@@ -270,11 +273,11 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 	// changing to 2 minutes (120000) as per bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=266246
 	// 10/26/2009:  Added being able to set with system property with name org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.connectTimeout
 	// for https://bugs.eclipse.org/bugs/show_bug.cgi?id=292995
-	protected static final int DEFAULT_CONNECTION_TIMEOUT = HttpClientOptions.RETRIEVE_DEFAULT_CONNECTION_TIMEOUT;
+	protected static final int DEFAULT_CONNECTION_TIMEOUT = ConnectionManagerHelper.DEFAULT_CONNECTION_TIMEOUT;
 	// changing to 2 minutes (120000) as per bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=266246
 	// 10/26/2009:  Added being able to set with system property with name org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.readTimeout
 	// for https://bugs.eclipse.org/bugs/show_bug.cgi?id=292995
-	protected static final int DEFAULT_READ_TIMEOUT = HttpClientOptions.RETRIEVE_DEFAULT_READ_TIMEOUT;
+	protected static final int DEFAULT_READ_TIMEOUT = ConnectionManagerHelper.DEFAULT_READ_TIMEOUT;
 
 	protected static final int HTTP_PORT = 80;
 
@@ -315,9 +318,8 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 	private ConnectingSocketMonitor connectingSockets;
 	private FileTransferJob connectJob;
 
-	public HttpClientRetrieveFileTransfer(HttpClient httpClient) {
-		this.httpClient = httpClient;
-		Assert.isNotNull(this.httpClient);
+	public HttpClientRetrieveFileTransfer(HttpClient client) {
+		this.httpClient = client;
 		proxyHelper = new JREProxyHelper();
 		connectingSockets = new ConnectingSocketMonitor(1);
 		socketEventSource = new SocketEventSource() {
@@ -393,13 +395,30 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 	 * @see org.eclipse.ecf.provider.filetransfer.retrieve.AbstractRetrieveFileTransfer#hardClose()
 	 */
 	protected void hardClose() {
-		super.hardClose();
+		// changed for addressing bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=370801
 		if (getMethod != null) {
+			// First, if !isDone and paused
+			if (!isDone() && isPaused())
+				getMethod.abort();
+			// release in any case
 			getMethod.releaseConnection();
+			// and set to null
 			getMethod = null;
 		}
+		// Close output stream...if we're supposed to
+		try {
+			if (localFileContents != null && closeOutputStream)
+				localFileContents.close();
+		} catch (final IOException e) {
+			Activator.getDefault().log(new Status(IStatus.ERROR, Activator.PLUGIN_ID, IStatus.ERROR, "hardClose", e)); //$NON-NLS-1$
+		}
+		// clear input and output streams
+		remoteFileContents = null;
+		localFileContents = null;
+		// reset response code
 		responseCode = -1;
-		if (proxyHelper != null) {
+		// If we're done and proxy helper still exists, then dispose
+		if (proxyHelper != null && isDone()) {
 			proxyHelper.dispose();
 			proxyHelper = null;
 		}
@@ -593,7 +612,20 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 	}
 
 	protected InputStream wrapTransferReadInputStream(InputStream inputStream, IProgressMonitor monitor) {
-		return inputStream;
+		// Added to address bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=370801
+		return new NoCloseWrapperInputStream(inputStream);
+	}
+
+	// Added to address bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=370801
+	class NoCloseWrapperInputStream extends FilterInputStream {
+
+		protected NoCloseWrapperInputStream(InputStream in) {
+			super(in);
+		}
+
+		public void close() {
+			// do nothing
+		}
 	}
 
 	protected boolean hasForceNTLMProxyOption() {
@@ -604,58 +636,18 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 	}
 
 	protected int getSocketReadTimeout() {
-		int result = DEFAULT_READ_TIMEOUT;
-		Map localOptions = getOptions();
-		if (localOptions != null) {
-			// See if the connect timeout option is present, if so set
-			Object o = localOptions.get(IRetrieveFileTransferOptions.READ_TIMEOUT);
-			if (o != null) {
-				if (o instanceof Integer) {
-					result = ((Integer) o).intValue();
-				} else if (o instanceof String) {
-					result = new Integer(((String) o)).intValue();
-				}
-				return result;
-			}
-			o = localOptions.get("org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.readTimeout"); //$NON-NLS-1$
-			if (o != null) {
-				if (o instanceof Integer) {
-					result = ((Integer) o).intValue();
-				} else if (o instanceof String) {
-					result = new Integer(((String) o)).intValue();
-				}
-			}
-		}
-		return result;
+		return ConnectionManagerHelper.getSocketReadTimeout(getOptions());
 	}
 
 	/**
 	 * @since 4.0
 	 */
 	protected int getConnectTimeout() {
-		int result = DEFAULT_CONNECTION_TIMEOUT;
-		Map localOptions = getOptions();
-		if (localOptions != null) {
-			// See if the connect timeout option is present, if so set
-			Object o = localOptions.get(IRetrieveFileTransferOptions.CONNECT_TIMEOUT);
-			if (o != null) {
-				if (o instanceof Integer) {
-					result = ((Integer) o).intValue();
-				} else if (o instanceof String) {
-					result = new Integer(((String) o)).intValue();
-				}
-				return result;
-			}
-			o = localOptions.get("org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.connectTimeout"); //$NON-NLS-1$
-			if (o != null) {
-				if (o instanceof Integer) {
-					result = ((Integer) o).intValue();
-				} else if (o instanceof String) {
-					result = new Integer(((String) o)).intValue();
-				}
-			}
-		}
-		return result;
+		return ConnectionManagerHelper.getConnectTimeout(getOptions());
+	}
+
+	private void initHttpClientConnectionManager() {
+		Activator.getDefault().getConnectionManagerHelper().initConnectionManager(httpClient, getOptions());
 	}
 
 	/* (non-Javadoc)
@@ -670,17 +662,14 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 		int code = -1;
 
 		try {
-			httpClient.getHttpConnectionManager().getParams().setSoTimeout(getSocketReadTimeout());
-			int connectTimeout = getConnectTimeout();
-			httpClient.getHttpConnectionManager().getParams().setConnectionTimeout(connectTimeout);
-			httpClient.getParams().setConnectionManagerTimeout(connectTimeout);
-
+			initHttpClientConnectionManager();
 			setupAuthentication(urlString);
 
 			CredentialsProvider credProvider = new ECFCredentialsProvider();
 			setupHostAndPort(credProvider, urlString);
 
 			getMethod = new GzipGetMethod(hostConfigHelper.getTargetRelativePath());
+			getMethod.addRequestHeader("Connection", "Keep-Alive"); //$NON-NLS-1$ //$NON-NLS-2$
 			getMethod.setFollowRedirects(true);
 			// Define a CredentialsProvider - found that possibility while debugging in org.apache.commons.httpclient.HttpMethodDirector.processProxyAuthChallenge(HttpMethod)
 			// Seems to be another way to select the credentials.
@@ -836,12 +825,18 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 			return urlUsesHttps(url) ? HTTPS_PORT : HTTP_PORT;
 		// This is wrong as if the url has no colonPort before '?' then it should return the default
 
-		final int colonPort = url.indexOf(':', colonSlashSlash + 1);
+		int colonPort = url.indexOf(':', colonSlashSlash + 1);
 		if (colonPort < 0)
 			return urlUsesHttps(url) ? HTTPS_PORT : HTTP_PORT;
 		// Make sure that the colonPort is not from some part of the rest of the URL
 		int nextSlash = url.indexOf('/', colonSlashSlash + 3);
 		if (nextSlash != -1 && colonPort > nextSlash)
+			return urlUsesHttps(url) ? HTTPS_PORT : HTTP_PORT;
+		// Make sure the colonPort is not part of the credentials in URI
+		final int atServer = url.indexOf('@', colonSlashSlash + 1);
+		if (atServer != -1 && colonPort < atServer && atServer < nextSlash)
+			colonPort = url.indexOf(':', atServer + 1);
+		if (colonPort < 0)
 			return urlUsesHttps(url) ? HTTPS_PORT : HTTP_PORT;
 
 		final int requestPath = url.indexOf('/', colonPort + 1);
@@ -917,10 +912,7 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 		int code = -1;
 
 		try {
-			httpClient.getHttpConnectionManager().getParams().setSoTimeout(getSocketReadTimeout());
-			int connectTimeout = getConnectTimeout();
-			httpClient.getHttpConnectionManager().getParams().setConnectionTimeout(connectTimeout);
-			httpClient.getParams().setConnectionManagerTimeout(connectTimeout);
+			initHttpClientConnectionManager();
 
 			CredentialsProvider credProvider = new ECFCredentialsProvider();
 			setupAuthentication(urlString);
@@ -928,6 +920,7 @@ public class HttpClientRetrieveFileTransfer extends AbstractRetrieveFileTransfer
 			setupHostAndPort(credProvider, urlString);
 
 			getMethod = new GzipGetMethod(hostConfigHelper.getTargetRelativePath());
+			getMethod.addRequestHeader("Connection", "Keep-Alive"); //$NON-NLS-1$ //$NON-NLS-2$
 			getMethod.setFollowRedirects(true);
 			// Define a CredentialsProvider - found that possibility while debugging in org.apache.commons.httpclient.HttpMethodDirector.processProxyAuthChallenge(HttpMethod)
 			// Seems to be another way to select the credentials.

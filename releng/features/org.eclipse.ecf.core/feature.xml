@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <feature
       id="org.eclipse.ecf.core"
-      label="Eclipse Communication Framework Target Components"
-      version="3.4.0.qualifier"
+      label="ECF Target Components for Eclipse"
+      version="3.5.7.qualifier"
       provider-name="%providerName"
       plugin="org.eclipse.ecf">
 
    <description url="http://www.eclipse.org/ecf">
-      This feature provides a core set of APIs for writing ECF-enabled applications.  This feature and the ECF Application feature are required to run ECF applications.
+      This feature provides all of the ECF APIs, providers, and examples for Eclipse.  Use this feature if you want to install all of ECF into Eclipse.
    </description>
 
    <copyright>
@@ -30,13 +30,6 @@ Contributors: Composent, Inc. - initial API and implementation
          version="0.0.0"/>
 
    <plugin
-         id="org.jivesoftware.smack"
-         download-size="0"
-         install-size="0"
-         version="0.0.0"
-         unpack="false"/>
-
-   <plugin
          id="org.eclipse.ecf.doc"
          download-size="0"
          install-size="0"
@@ -52,13 +45,6 @@ Contributors: Composent, Inc. - initial API and implementation
 
    <plugin
          id="org.eclipse.ecf.provider.irc"
-         download-size="0"
-         install-size="0"
-         version="0.0.0"
-         unpack="false"/>
-
-   <plugin
-         id="org.eclipse.ecf.provider.xmpp"
          download-size="0"
          install-size="0"
          version="0.0.0"
@@ -271,20 +257,6 @@ Contributors: Composent, Inc. - initial API and implementation
 
    <plugin
          id="org.eclipse.ecf.example.collab.editor"
-         download-size="0"
-         install-size="0"
-         version="0.0.0"
-         unpack="false"/>
-
-   <plugin
-         id="org.eclipse.ecf.examples.updatesite.client"
-         download-size="0"
-         install-size="0"
-         version="0.0.0"
-         unpack="false"/>
-
-   <plugin
-         id="org.eclipse.ecf.examples.updatesite.server"
          download-size="0"
          install-size="0"
          version="0.0.0"

@@ -75,25 +75,21 @@ public class WatchManager implements BundleStoppingListener {
 		nodeWriter.publish();
 	}
 
-	public synchronized void publish(final AdvertisedService published) {
+	public void publish(AdvertisedService published) {
 		Assert.isNotNull(published);
 		String serviceid = published.getServiceID().getServiceTypeID()
 				.getInternal();
-		if (WatchManager.this.getNodeWriters().containsKey(serviceid))
+		if (getNodeWriters().containsKey(serviceid))
 			return;
-		if (!WatchManager.this.writeRootLock.isOpen()) {
-			synchronized (WatchManager.this.writeRootLock) {
-				try {
-					/* wait for the server to get ready */
-					WatchManager.this.writeRootLock.wait();
-				} catch (InterruptedException e) {
-					Logger.log(LogService.LOG_DEBUG, e.getMessage(), e);
-				}
-			}
+		try {
+			/* wait for the server to get ready */
+			while (!writeRootLock.isOpen())
+				Thread.sleep(300);
+		} catch (InterruptedException e) {
+			Logger.log(LogService.LOG_DEBUG, e.getMessage(), e);
 		}
-		NodeWriter nodeWriter = new NodeWriter(published,
-				WatchManager.this.writeRoot);
-		WatchManager.this.getNodeWriters().put(serviceid, nodeWriter);
+		NodeWriter nodeWriter = new NodeWriter(published, writeRoot);
+		getNodeWriters().put(serviceid, nodeWriter);
 		allKnownServices.put(published.getServiceID().getName(), published);
 		nodeWriter.publish();
 	}
@@ -105,9 +101,9 @@ public class WatchManager implements BundleStoppingListener {
 			return;
 		}
 		NodeWriter nw = getNodeWriters().remove(id);
-		allKnownServices.remove(nw.getNode().getWrappedService().getServiceID()
-				.getName());
 		if (nw != null) {
+			allKnownServices.remove(nw.getNode().getWrappedService().getServiceID()
+					.getName());
 			nw.remove();
 		}
 		nw = null;
